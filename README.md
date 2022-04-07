@@ -68,9 +68,13 @@ header {
 
 - VBT(verification block table)  
     > The verification block table, encoded with **big endian**, shall have the following format:   
-    - Verification Block Table Format Identifier. [size 16 bits] 
-    - Number of data blocks. > 16bits
+    - Verification Block Table Format Identifier. [ size 16 bits] 
+    - Number of data blocks.  [ size 16bits]
     - StartAddress [ size 32 bits] , Length [ size 32 bits], Hash value.
     Every data blocks shall be defined, except the block table itself. The size of the hash is dependent of the hash function used and is specified elsewhere. The Length is the unprocessed length
     - The data blocks shall be sorted according to the order the data blocks are being programmed to the ECU.
     - SHA-256 hash function is used, i.e. each hash value is 256 bits. 
+
+## VBB scripts
+
+the description of vbf file parameters.

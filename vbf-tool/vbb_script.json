@@ -1,0 +1,21 @@
+{
+    "VBF1":
+    {
+        "SourceFile": "./sample_bin.bin",
+        "TargetFile": "sample_bin.vbf",
+        "VBFVersion": "2.6",
+        "SwType": "EXE",
+        "SwPartNum": "8894082291",
+        "ECUaddr": "1432",
+        "SwVersion": "A",
+        "CreateVerificationBlock": 0,
+        "VerificationBlockStartAddr": "F40000",
+        "Compressed": 0,
+        "Sort": 0,
+        "Group": 0
+    },
+    "VBF2":
+    {
+        "tbd": "tbd"  
+    }
+}
