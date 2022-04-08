@@ -2,7 +2,7 @@
     "VBF1":
     {
         "SourceFile": "./sample_bin.bin",
-        "TargetFile": "sample_bin.vbf",
+        "TargetFile": "./sample_bin.vbf",
         "VBFVersion": "2.6",
         "SwType": "EXE",
         "SwPartNum": "8894082291",
