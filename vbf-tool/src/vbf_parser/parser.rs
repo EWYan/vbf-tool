@@ -16,6 +16,7 @@ header {
     //*                        DO NOT EDIT !
     //*
     //**********************************************************
+
 "#;
 pub struct VbfFt{
     status:StatusT,
@@ -29,37 +30,97 @@ impl VbfFt {
         let vbf_inst = VbfFt{
             status: StatusT::Init,
             script: ScriptsT{
-                source_file: String::from(vbb_parsed["VBF1"]["SourceFile"].as_str().unwrap()),
-                target_file: String::from(vbb_parsed["VBF1"]["TargetFile"].as_str().unwrap()),
-                vbf_version: String::from(vbb_parsed["VBF1"]["VBFVersion"].as_str().unwrap()),
-                sw_type: String::from(vbb_parsed["VBF1"]["SwType"].as_str().unwrap()),
-                sw_part_nmu: String::from(vbb_parsed["VBF1"]["SwPartNum"].as_str().unwrap()),
-                ecu_addr: String::from(vbb_parsed["VBF1"]["ECUaddr"].as_str().unwrap()),
-                sw_version: String::from(vbb_parsed["VBF1"]["SwVersion"].as_str().unwrap()),
-                create_vbt: vbb_parsed["VBF1"]["CreateVerificationBlock"].as_bool().unwrap(),
-                vbt_addr: String::from(vbb_parsed["VBF1"]["VerificationBlockStartAddr"].as_str().unwrap()),
-                compressed: vbb_parsed["VBF1"]["Compressed"].as_bool().unwrap(),
-                sort: vbb_parsed["VBF1"]["Sort"].as_bool().unwrap(),
-                group: vbb_parsed["VBF1"]["Group"].as_bool().unwrap(),
+                source_file: Item {
+                    description: String::from("blahblah"),
+                    value: ValueT::Literal(String::from(vbb_parsed["VBF1"]["SourceFile"].as_str().unwrap())),
+                },
+                target_file: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal(String::from(vbb_parsed["VBF1"]["TargetFile"].as_str().unwrap())), 
+                },
+                vbf_version: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal( String::from(vbb_parsed["VBF1"]["VBFVersion"].as_str().unwrap())), 
+                },
+                sw_type: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal( String::from(vbb_parsed["VBF1"]["SwType"].as_str().unwrap())), 
+                },
+                sw_part_nmu: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal( String::from(vbb_parsed["VBF1"]["SwPartNum"].as_str().unwrap())), 
+                },
+                ecu_addr: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal( String::from(vbb_parsed["VBF1"]["ECUaddr"].as_str().unwrap())), 
+                },
+                sw_version: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal( String::from(vbb_parsed["VBF1"]["SwVersion"].as_str().unwrap())), 
+                },
+                create_vbt: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Toggle(vbb_parsed["VBF1"]["CreateVerificationBlock"].as_bool().unwrap()), 
+                },
+                vbt_addr: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Literal( String::from(vbb_parsed["VBF1"]["VerificationBlockStartAddr"].as_str().unwrap())), 
+                },
+                compressed: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Toggle(vbb_parsed["VBF1"]["Compressed"].as_bool().unwrap()), 
+                },
+                sort: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Toggle(vbb_parsed["VBF1"]["Sort"].as_bool().unwrap()), 
+                },
+                group: Item { 
+                    description: String::from("blahblah"), 
+                    value: ValueT::Toggle(vbb_parsed["VBF1"]["Group"].as_bool().unwrap()), 
+                },
             },
         };
         // calculate bin file hash256
-        let mut bin_file = fs::File::open(&vbf_inst.script.source_file).unwrap();
+        let bin_file_path = vbf_inst.script.source_file.value.literal().unwrap();
+        let mut bin_file = fs::File::open(bin_file_path).unwrap();
         let mut hasher = Sha256::new();
         let n = io::copy(&mut bin_file, &mut hasher).unwrap();
         let hash = hasher.finalize();
         println!("binary hash({:x?}) :{:x?}", n,hash);
-        let mut file_w = fs::File::create(&vbf_inst.script.target_file).unwrap();
-        file_w.write_all(vbf_inst.script.vbf_version.as_bytes()).unwrap();
-        file_w.write_all(";".as_bytes()).unwrap();
+
+        // try to create new vbf files
+        let target_file_path = vbf_inst.script.target_file.value.literal().unwrap();
+        let mut file_w = fs::File::create(target_file_path).unwrap();
+        file_w.write_all(vbf_inst.script.vbf_version.value.literal().unwrap().as_bytes()).unwrap();
+        file_w.write_all(b";\n").unwrap();
         file_w.write_all(_HEADER.as_bytes()).unwrap();
-        file_w.write_all("}".as_bytes()).unwrap();
+
+        // write trivial option parameters
+        VbfFt::dump(&vbf_inst, &mut file_w).unwrap();
+
+        // write non-trivial option parameters
+        
+        // last half curly brace 
+        file_w.write_all(b"}").unwrap();
+
+        // appending data block
+
+        // write all metadata to disk
+        file_w.sync_all().unwrap();
         Ok(())
     }
     #[allow(dead_code)]
     pub fn print_info(&self) {
         println!("magic u8 : {:?}", self.status);
         println!("vbf_info : {:#?}", self.script);
+    }
+    pub fn dump(&self, fp: &mut fs::File) -> io::Result<()>{
+        fp.write_fmt(format_args!("\t// {}\n", self.script.sw_type.description)).unwrap();
+        fp.write_fmt(format_args!("\t// {}\n", self.script.sw_part_nmu.description)).unwrap();
+        fp.write_fmt(format_args!("\t// {}\n", self.script.ecu_addr.description)).unwrap();
+        fp.write_fmt(format_args!("\t// {}\n", self.script.sw_version.description)).unwrap();
+        
+        Ok(())
     }
 }
 #[derive(Debug)]
@@ -69,22 +130,40 @@ enum StatusT {
 }
 #[derive(Debug)]
 struct ScriptsT {
-    source_file: String,//input bin file
-    target_file: String,//output vbf file
-    vbf_version: String,//vbf format version 
-    sw_type: String, //software type,
-    sw_part_nmu: String,//software partnumber
-    ecu_addr: String,//ecu address
-    sw_version: String,//software version
-    create_vbt: bool,//if create verification block table
-    vbt_addr: String,//address of vbt
-    compressed: bool,//if compress input bin file
-    sort: bool,//tbd
-    group: bool,//tbd
+    source_file: Item,//input bin file
+    target_file: Item,//output vbf file
+    vbf_version: Item,//vbf format version 
+    sw_type: Item, //software type,
+    sw_part_nmu: Item,//software partnumber
+    ecu_addr: Item,//ecu address
+    sw_version: Item,//software version
+    create_vbt: Item,//if create verification block table
+    vbt_addr: Item,//address of vbt
+    compressed: Item,//if compress input bin file
+    sort: Item,//tbd
+    group: Item,//tbd
 }
-
-
-// pub fn parser_test() {
-//     println!("paser test");
-// }
-
+#[derive(Debug)]
+struct Item {
+    description: String,
+    value:ValueT,
+}
+#[derive(Debug)]
+enum ValueT {
+    Literal(String),
+    Toggle(bool),
+}
+impl ValueT {
+    fn literal(&self) -> Option<String> {
+        match self {
+            ValueT::Literal(c) => Some(c.to_string()),
+            _ => None,
+        }
+    }    
+    fn toggle(&self) -> Option<bool> {
+        match self {
+            ValueT::Toggle(c) => Some(*c),
+            _ => None,
+        }
+    }    
+}

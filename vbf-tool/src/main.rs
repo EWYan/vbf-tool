@@ -19,13 +19,11 @@ fn run() -> io::Result<()> {
 
     let vbb_path = matches.value_of("VBB").unwrap();
     let result = vbf_parser::VbfFt::new(vbb_path);
-    match result {
-        Err(err) => {
-            eprintln!("Error: {}", err);
-            std::process::exit(1);
-        }
-        _ => Ok(())
-    }
+   if let Err(err) = result {
+       eprintln!("Error: {}", err);
+       std::process::exit(1);
+   }
+   Ok(())
 }
 
 fn main() {
