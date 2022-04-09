@@ -3,16 +3,16 @@
     {
         "SourceFile": "./sample_bin.bin",
         "TargetFile": "./sample_bin.vbf",
-        "VBFVersion": "2.6",
+        "VBFVersion": "vbf_version = beta1.0",
         "SwType": "EXE",
         "SwPartNum": "8894082291",
         "ECUaddr": "1432",
         "SwVersion": "A",
-        "CreateVerificationBlock": 0,
+        "CreateVerificationBlock": false,
         "VerificationBlockStartAddr": "F40000",
-        "Compressed": 0,
-        "Sort": 0,
-        "Group": 0
+        "Compressed": false,
+        "Sort": false,
+        "Group": false
     },
     "VBF2":
     {

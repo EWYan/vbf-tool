@@ -78,3 +78,7 @@ header {
 ## VBB scripts
 
 the description of vbf file parameters.
+
+
+## usage example
+$ vbf-tool ./vbb_script.json

@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 clap = {version = "2", features = ["suggestions", "color", "wrap_help"]}
+json = "0.12.4"
+sha2 = "0.10.2"
