@@ -1,7 +1,7 @@
 {
     "VBF1":
     {
-        "SourceFile": "./ti-proc.bin",
+        "SourceFile": "./MCU_APP_MUS00_M1.bin",
         "TargetFile": "./sample_bin.vbf",
         "VBFVersion": "2.6",
         "SwType": "EXE",
