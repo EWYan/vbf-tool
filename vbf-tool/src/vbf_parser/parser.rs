@@ -6,6 +6,7 @@ use std::io::prelude::*;
 use std::{fs, io};
 //CRC_16_IBM_3740 -> CCITT,AUTOSAR
 //need self defined CRC32 
+// google vbf crc32 algorithm
 use crc::{Algorithm, Crc, CRC_16_IBM_3740};
 use std::mem::transmute;
 use std::time::Instant;
