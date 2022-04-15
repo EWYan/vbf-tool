@@ -8,7 +8,6 @@
         "SwPartNum": "8894082291",
         "ECUaddr": "1432",
         "SwVersion": "A",
-        "ImageOffset": "16777216",
         "CreateVerificationBlock": true,
         "VerificationBlockStartAddr": "4294960640",
         "Compressed": false,
