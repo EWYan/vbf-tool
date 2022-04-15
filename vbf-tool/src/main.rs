@@ -18,7 +18,7 @@ fn run() -> io::Result<()> {
         )
         .get_matches();
 
-    let vbb_path = matches.value_of("VBB").unwrap();
+    let vbb_path = matches.value_of("VBB").expect("invalid vbb path");
     let result = vbf_parser::VbfFt::new(vbb_path);
     if let Err(err) = result {
         eprintln!("Error: {}", err);
@@ -40,4 +40,3 @@ fn main() {
         Ok(()) => {}
     }
 }
-// C:\d_vault\git_trace\hexyl-y\hexyl-y\target\debug\hexyl-y.exe
