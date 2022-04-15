@@ -24,7 +24,7 @@ pub struct VbfFt {
     vbt_info: VbtInfo,
     script: ScriptsT,
 }
-
+// todo add erase field
 impl VbfFt {
     pub fn new(vbb_path: &str) -> io::Result<()> {
         let vbb_json = fs::read_to_string(vbb_path).unwrap();
