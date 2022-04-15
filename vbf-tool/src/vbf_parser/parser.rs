@@ -13,6 +13,7 @@ pub const CRC_32_IEEE802: Algorithm<u32> = Algorithm { poly: 0x04c11db7, init: 0
 pub struct VbfFt{
     status:StatusT,
     file_bytes:u32,
+    vbt_info: VbtInfo,
     script:ScriptsT,
 }
 
@@ -23,6 +24,24 @@ impl VbfFt {
         let mut vbf_inst = VbfFt{
             status: StatusT::Init,
             file_bytes: 0u32,
+            vbt_info: VbtInfo { 
+                vbt_len: 44_u32,
+                vbt_hash: [0_u8;32],
+                vbt_format: 0_u16, 
+                num_blk: 0_u16, 
+                blk:[
+                    blk_info {
+                        start_addr: 0_u32,
+                        length: 0_u32,
+                        hash_value: [0_u8;32],
+                    },
+                    blk_info{
+                        start_addr: 0_u32,
+                        length: 0_u32,
+                        hash_value: [0_u8;32],
+                    },
+                ]
+            },
             script: ScriptsT{
                 source_file: Item {
                     description: String::from("blahblah"),
@@ -81,25 +100,28 @@ impl VbfFt {
         let mut hasher = Sha256::new();
         let n = io::copy(&mut bin_file, &mut hasher).unwrap();
         let hash = hasher.finalize();
-        println!("binary hash({:x?}) :{:x?}", n,hash);
         println!("elapsed time :{:?}",now.elapsed());
         vbf_inst.file_bytes = n as u32;
+        vbf_inst.vbt_info.vbt_format = 0_u16;
+        vbf_inst.vbt_info.num_blk = 1_u16;
+        vbf_inst.vbt_info.blk[0].hash_value.clone_from_slice(hash.as_slice());
+        
+
         // try to create new vbf files
         let target_file_path = vbf_inst.script.target_file.value.literal().unwrap();
         let mut file_w = fs::File::create(target_file_path).unwrap();
 
         // write trivial option parameters
-        VbfFt::dump(&vbf_inst, &mut file_w).unwrap();
+        VbfFt::dump(& mut vbf_inst, &mut file_w).unwrap();
 
         // write all metadata to disk
         file_w.sync_all().unwrap();
         Ok(())
     }
     // dump data to vbf files
-    pub fn dump(&self, fp: &mut fs::File) -> io::Result<()>{
+    pub fn dump(&mut self, fp: &mut fs::File) -> io::Result<()>{
         // vbf_version = 
         fp.write_fmt(format_args!("vbf_version = {};\r\n", self.script.vbf_version.value.literal().unwrap())).unwrap();
-        // fp.write(self.script.vbf_version.value.literal().unwrap().as_bytes()).unwrap();
 
         fp.write(b"\r\n").unwrap();
         fp.write(b"header {\r\n").unwrap();
@@ -137,10 +159,47 @@ impl VbfFt {
         fp.write_fmt(format_args!("       ecu_address = 0x{};\r\n", self.script.ecu_addr.value.literal().unwrap())).unwrap();
         fp.write(b"\r\n").unwrap();
         
+        // vbt info 
+        let vbt_enable = self.script.create_vbt.value.toggle().unwrap();
+        if vbt_enable {
+            fp.write(b"    // Start address of the hash table\r\n").unwrap();
+            fp.write_fmt(format_args!("       verification_block_start = 0x{};\r\n", self.script.vbt_addr.value.literal().unwrap())).unwrap();
+            fp.write(b"\r\n").unwrap();
+
+            fp.write(b"    // Length of the hash table\r\n").unwrap();
+            fp.write_fmt(format_args!("       verification_block_length = 0x{:08X};\r\n", self.vbt_info.vbt_len)).unwrap();
+            fp.write(b"\r\n").unwrap();
+
+            // calculate hash digest of vbt
+            let mut hasher = Sha256::new();
+            let vbt_address:[u8; 4] = unsafe { transmute(self.script.vbt_addr.value.literal().unwrap().parse::<u32>().unwrap().to_be())};
+            hasher.update(vbt_address);
+            let vbt_length:[u8; 4] = unsafe { transmute(self.vbt_info.vbt_len.to_be())};
+            hasher.update(vbt_length);
+            let vbt_format: [u8; 2] = unsafe { transmute(self.vbt_info.vbt_format.to_be()) };
+            hasher.update(vbt_format);
+            let num_blk:[u8;2] = unsafe { transmute(self.vbt_info.num_blk.to_be())};
+            hasher.update(num_blk);
+            hasher.update(self.vbt_info.blk[0].hash_value);
+            let vbt_hash = hasher.finalize();
+            // store final vbt_hash
+            self.vbt_info.vbt_hash.clone_from_slice(vbt_hash.as_slice());
+
+            fp.write(b"    // Root hash value\r\n").unwrap();
+            fp.write(b"       verification_block_root_hash = 0x").unwrap();
+            // fp.write(&self.vbt_info.vbt_hash[..]).unwrap();
+            for b in self.vbt_info.vbt_hash {
+                fp.write_fmt(format_args!("{:02X}",b)).unwrap();
+            }
+
+            fp.write(b";\r\n\r\n").unwrap();
+            println!("vbt enable");
+        }
+
         fp.write(b"    // Blocks sorted\r\n").unwrap();
         fp.write(b"    // Blocks grouped\r\n").unwrap();
-        fp.write(b"    // Blocks:   1\r\n").unwrap();
-        fp.write_fmt(format_args!("    // Bytes:    {};\r\n", self.file_bytes)).unwrap();
+        fp.write_fmt(format_args!("    // Blocks:   {};\r\n", 2)).unwrap();
+        fp.write_fmt(format_args!("    // Bytes:    {};\r\n", self.file_bytes + 44)).unwrap();
 
         fp.write(b"\r\n").unwrap();
 
@@ -151,9 +210,7 @@ impl VbfFt {
         let mut bin_crc32 = crc32_inst.digest();
         let mut bin_crc16 = crc16_inst.digest();
         let mut bin_size:u32 = 0;
-        // let path2 = Path::new("case3-calcrc");
         let mut f_bin = fs::File::open(self.script.source_file.value.literal().unwrap()).unwrap();
-        // let mut file_size:usize = 0;
         let crc_v = loop {
             let mut buffer = [0;4096];
             let n = f_bin.read(&mut buffer[..]).unwrap() as usize;
@@ -169,6 +226,9 @@ impl VbfFt {
         fp.write_fmt(format_args!("    file_checksum = 0x{:08X};\r\n", crc_v.0)).unwrap();
         fp.write_all(b"}").unwrap();
         
+        // calculate vbt crc16
+
+
         // seek bin file to start 
         f_bin.seek(io::SeekFrom::Start(0)).unwrap();
         let start_address = 00000000_u32;
@@ -183,7 +243,6 @@ impl VbfFt {
         loop {
             let mut buffer = [0;4096];
             let n = f_bin.read(&mut buffer[..]).unwrap();
-            println!("current read size:{}", n);
             write_cnt += n;
             if n < 4096 {
                 fp.write(&buffer[..n]).unwrap();
@@ -198,6 +257,26 @@ impl VbfFt {
                 fp.write(&bytes[..2]).unwrap();
             }
         };
+        let vbt_address:[u8; 4] = unsafe { transmute(self.script.vbt_addr.value.literal().unwrap().parse::<u32>().unwrap().to_be())};
+        fp.write(&vbt_address).unwrap();
+        let vbt_length:[u8; 4] = unsafe { transmute(self.vbt_info.vbt_len.to_be())};
+        fp.write(&vbt_length).unwrap();
+        let crc16_inst = Crc::<u16>::new(&CRC_16_IBM_3740);
+        let mut crc16_vbt = crc16_inst.digest();
+        let vbt_format: [u8; 2] = unsafe { transmute(self.vbt_info.vbt_format.to_be()) };
+        crc16_vbt.update(&vbt_format);
+        fp.write(&vbt_format).unwrap();
+
+        let num_blk:[u8;2] = unsafe { transmute(self.vbt_info.num_blk.to_be())};
+        crc16_vbt.update(&num_blk);
+        fp.write(&num_blk).unwrap();
+        
+        crc16_vbt.update(&self.vbt_info.blk[0].hash_value);
+        let vbt_check:[u8;2] = unsafe { transmute(crc16_vbt.finalize().to_be())};
+
+        fp.write(&self.vbt_info.blk[0].hash_value).unwrap();
+        fp.write(&vbt_check).unwrap();
+
         println!("write consumed time:{:?}", now.elapsed());
         println!("write_cnt: {:x}", write_cnt);
         println!("crc16:0x{:04X}", crc_v.1);
@@ -256,4 +335,15 @@ impl ValueT {
     }    
 }
 
-// fn get_crc()
+struct blk_info {
+    start_addr: u32,
+    length: u32,
+    hash_value:[u8;32],
+}
+struct VbtInfo {
+    vbt_len:u32,
+    vbt_hash:[u8;32],
+    vbt_format:u16,
+    num_blk: u16,
+    blk:[blk_info;2],
+}

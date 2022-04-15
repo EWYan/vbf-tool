@@ -4,6 +4,7 @@ extern crate clap;
 mod vbf_parser;
 use clap::{App, Arg};
 use std::io;
+use std::time::Instant;
 
 fn run() -> io::Result<()> {
     /* get parameters from input */
@@ -27,7 +28,10 @@ fn run() -> io::Result<()> {
 }
 
 fn main() {
+    let now = Instant::now();
     let result = run();
+    let elapsed_time = now.elapsed();
+    println!("running time:{:?}",elapsed_time);
     match result {
         Err(err) => {
             eprintln!("Error: {}", err);

@@ -1,15 +1,15 @@
 {
     "VBF1":
     {
-        "SourceFile": "./MCU_APP_MUS00_M1.bin",
+        "SourceFile": "./ti-proc.bin",
         "TargetFile": "./sample_bin.vbf",
         "VBFVersion": "2.6",
         "SwType": "EXE",
         "SwPartNum": "8894082291",
         "ECUaddr": "1432",
         "SwVersion": "A",
-        "CreateVerificationBlock": false,
-        "VerificationBlockStartAddr": "FB0000",
+        "CreateVerificationBlock": true,
+        "VerificationBlockStartAddr": "16457728",
         "Compressed": false,
         "Sort": true,
         "Group": true
