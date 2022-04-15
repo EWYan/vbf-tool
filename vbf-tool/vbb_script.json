@@ -1,7 +1,7 @@
 {
     "VBF1":
     {
-        "SourceFile": "./MCU_APP_MUS00_M1.bin",
+        "SourceFile": "./MCU_APP_MUS00_M.bin",
         "TargetFile": "./sample_bin.vbf",
         "VBFVersion": "2.6",
         "SwType": "EXE",
@@ -9,7 +9,7 @@
         "ECUaddr": "1432",
         "SwVersion": "A",
         "CreateVerificationBlock": true,
-        "VerificationBlockStartAddr": "16457728",
+        "VerificationBlockStartAddr": "4294960640",
         "Compressed": false,
         "Sort": true,
         "Group": true
