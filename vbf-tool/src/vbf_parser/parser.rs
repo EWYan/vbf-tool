@@ -20,8 +20,6 @@ pub const CRC_32_IEEE802: Algorithm<u32> = Algorithm {
 
 pub struct VbfFt {
     status: StatusT,
-    image_start_addr: u32,
-    file_bytes: u32,
     vbt_info: VbtInfo,
     script: ScriptsT,
 }
@@ -32,8 +30,6 @@ impl VbfFt {
         let vbb_parsed = json::parse(&vbb_json).unwrap();
         let mut vbf_inst = VbfFt {
             status: StatusT::Init,
-            image_start_addr: 0x01000000 as u32,
-            file_bytes: 0u32,
             vbt_info: VbtInfo {
                 vbt_len: 44_u32,
                 vbt_hash: [0_u8; 32],
@@ -41,7 +37,7 @@ impl VbfFt {
                 num_blk: 0_u16,
                 blk: [
                     blk_info {
-                        start_addr: 0_u32,
+                        start_addr: 0x01000000 as u32,
                         length: 0_u32,
                         hash_value: [0_u8; 32],
                     },
@@ -95,6 +91,14 @@ impl VbfFt {
                         vbb_parsed["VBF1"]["SwVersion"].as_str().unwrap(),
                     )),
                 },
+                image_offset: Item { 
+                    description: String::from("image offset"),
+                    value: ValueT::Literal(String::from(
+                        vbb_parsed["VBF1"]["ImageOffset"]
+                            .as_str()
+                            .unwrap(),
+                    )),
+                 },
                 create_vbt: Item {
                     description: String::from("If enable VBT"),
                     value: ValueT::Toggle(
@@ -126,14 +130,12 @@ impl VbfFt {
             },
         };
         // calculate bin file hash256
-        let now = Instant::now();
         let bin_file_path = vbf_inst.script.source_file.value.literal().unwrap();
         let mut bin_file = fs::File::open(bin_file_path).unwrap();
         let mut hasher = Sha256::new();
         let n = io::copy(&mut bin_file, &mut hasher).unwrap();
         let hash = hasher.finalize();
-        println!("elapsed time :{:?}", now.elapsed());
-        vbf_inst.file_bytes = n as u32;
+        vbf_inst.vbt_info.blk[0].length = n as u32;
         vbf_inst.vbt_info.vbt_format = 0_u16;
         vbf_inst.vbt_info.num_blk = 1_u16;
         vbf_inst.vbt_info.blk[0]
@@ -154,8 +156,6 @@ impl VbfFt {
     // dump data to vbf files
     pub fn dump(&mut self, fp: &mut fs::File) -> io::Result<()> {
         // vbf_version =
-        // let start_address = 0x01000000 as u32;
-        // let app_size = 0_u32;
         fp.write_fmt(format_args!(
             "vbf_version = {};\r\n",
             self.script.vbf_version.value.literal().unwrap()
@@ -268,9 +268,9 @@ impl VbfFt {
             let num_blk: [u8; 2] = unsafe { transmute((self.vbt_info.num_blk - 1).to_be()) };
             hasher.update(num_blk);
 
-            let bytes: [u8; 4] = unsafe { transmute(self.image_start_addr.to_be()) };
+            let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
             hasher.update(&bytes);
-            let bytes: [u8; 4] = unsafe { transmute(self.file_bytes.to_be()) };
+            let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
             hasher.update(&bytes);
 
             hasher.update(self.vbt_info.blk[0].hash_value);
@@ -298,14 +298,13 @@ impl VbfFt {
         .unwrap();
         fp.write_fmt(format_args!(
             "    // Bytes:    {};\r\n",
-            self.file_bytes + 44 * (vbt_enable as u32)
+            self.vbt_info.blk[0].length + 44 * (vbt_enable as u32)
         ))
         .unwrap();
 
         fp.write(b"\r\n").unwrap();
 
         // write crc
-        let now = Instant::now();
         let crc32_inst = Crc::<u32>::new(&CRC_32_IEEE802);
         let crc16_inst = Crc::<u16>::new(&CRC_16_IBM_3740);
         let mut bin_crc32 = crc32_inst.digest();
@@ -323,7 +322,6 @@ impl VbfFt {
                 break (bin_crc32.finalize(), bin_crc16.finalize());
             }
         };
-        println!("elapsed time: {:?}", now.elapsed());
         // file_checksum
         fp.write_fmt(format_args!("    file_checksum = 0x{:08X};\r\n", crc_v.0))
             .unwrap();
@@ -332,19 +330,17 @@ impl VbfFt {
         // seek bin file to start
         f_bin.seek(io::SeekFrom::Start(0)).unwrap();
 
-        let bytes: [u8; 4] = unsafe { transmute(self.image_start_addr.to_be()) };
+        let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
         fp.write_all(&bytes).unwrap();
-        let bytes: [u8; 4] = unsafe { transmute(self.file_bytes.to_be()) };
+        let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
         fp.write_all(&bytes).unwrap();
 
         // write binary of bin to target file
-        let now = Instant::now();
         let mut write_cnt = 0_usize;
         loop {
             let mut buffer = [0; 4096];
             let n = f_bin.read(&mut buffer[..]).unwrap();
             write_cnt += n;
-            // println!("read bytes: {}", n);
             match n {
                 4096 => {
                     fp.write(&buffer[..n]).unwrap();
@@ -386,10 +382,10 @@ impl VbfFt {
             crc16_vbt.update(&num_blk);
             fp.write(&num_blk).unwrap();
 
-            let bytes: [u8; 4] = unsafe { transmute(self.image_start_addr.to_be()) };
+            let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
             crc16_vbt.update(&bytes);
             fp.write_all(&bytes).unwrap();
-            let bytes: [u8; 4] = unsafe { transmute(self.file_bytes.to_be()) };
+            let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
             crc16_vbt.update(&bytes);
             fp.write_all(&bytes).unwrap();
 
@@ -402,7 +398,6 @@ impl VbfFt {
         }
         #[cfg(debug_assertions)]
         {
-            println!("write consumed time:{:?}", now.elapsed());
             println!("write_cnt: {}", write_cnt);
             println!("crc16:0x{:04X}", crc_v.1);
             println!("crc32:0x{:08X}", crc_v.0);
@@ -427,6 +422,7 @@ struct ScriptsT {
     sw_part_nmu: Item, //software partnumber
     ecu_addr: Item,    //ecu address
     sw_version: Item,  //software version
+    image_offset: Item,//image offset
     create_vbt: Item,  //if create verification block table
     vbt_addr: Item,    //address of vbt
     compressed: Item,  //if compress input bin file
