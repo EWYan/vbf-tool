@@ -225,6 +225,26 @@ impl VbfFt {
         .unwrap();
         fp.write(b"\r\n").unwrap();
 
+    //         // Erase information
+    // //         start,     length
+    //    erase = { { 0x01000000, 0x000f75c0 },
+    //    { 0xffffe600, 0x0000002c }
+    //  }; 
+        fp.write(b"    // Erase information\r\n").unwrap();
+        fp.write(b"    //         start,     length\r\n").unwrap();
+        fp.write_fmt(format_args!(
+            "       erase = {{ {{ 0x{:08X}, 0x{:08x} }},\r\n",
+            self.script.image_offset.value.literal().unwrap().parse::<u32>().unwrap(), self.vbt_info.blk[0].length
+        ))
+        .unwrap();
+        fp.write_fmt(format_args!(
+            "                 {{ 0x{:08x}, 0x{:08x} }}\r\n",
+            self.script.vbt_addr.value.literal().unwrap().parse::<u32>().unwrap(), self.vbt_info.vbt_len
+        ))
+        .unwrap();
+        fp.write(b"               };\r\n").unwrap();
+        fp.write(b"\r\n").unwrap();
+
         // vbt info
         let vbt_enable = self.script.create_vbt.value.toggle().unwrap();
         if vbt_enable {
