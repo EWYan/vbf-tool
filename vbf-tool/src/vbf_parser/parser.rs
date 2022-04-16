@@ -2,11 +2,9 @@ extern crate json;
 extern crate sha2;
 
 use sha2::{Digest, Sha256};
-use std::io::prelude::*;
+use std::io::{prelude::*, SeekFrom};
 use std::{fs, io};
 //CRC_16_IBM_3740 -> CCITT,AUTOSAR
-//need self defined CRC32 
-// google vbf crc32 algorithm
 use crc::{Algorithm, Crc, CRC_16_IBM_3740};
 use std::mem::transmute;
 use std::time::Instant;
@@ -42,12 +40,12 @@ impl VbfFt {
                 vbt_format: 0_u16,
                 num_blk: 0_u16,
                 blk: [
-                    blk_info {
+                    BlkInfo {
                         start_addr: 0_u32,
                         length: 0_u32,
                         hash_value: [0_u8; 32],
                     },
-                    blk_info {
+                    BlkInfo {
                         start_addr: 0_u32,
                         length: 0_u32,
                         hash_value: [0_u8; 32],
@@ -97,6 +95,12 @@ impl VbfFt {
                         vbb_parsed["VBF1"]["SwVersion"].as_str().unwrap(),
                     )),
                 },
+                image_offset: Item {
+                    description: String::from("image offset"),
+                    value: ValueT::Literal(String::from(
+                        vbb_parsed["VBF1"]["ImageOffset"].as_str().unwrap(),
+                    )),
+                },
                 create_vbt: Item {
                     description: String::from("If enable VBT"),
                     value: ValueT::Toggle(
@@ -134,13 +138,21 @@ impl VbfFt {
         let mut hasher = Sha256::new();
         let n = io::copy(&mut bin_file, &mut hasher).unwrap();
         let hash = hasher.finalize();
-        println!("elapsed time :{:?}", now.elapsed());
-        vbf_inst.file_bytes = n as u32;
-        vbf_inst.vbt_info.vbt_format = 0_u16;
-        vbf_inst.vbt_info.num_blk = 1_u16;
+        // println!("image offset :0x{:?}", vbf_inst.script.image_offset.value.literal().unwrap().as_bytes());
+        vbf_inst.vbt_info.blk[0].start_addr = vbf_inst
+            .script
+            .image_offset
+            .value
+            .literal()
+            .unwrap()
+            .parse::<u32>()
+            .unwrap(); //0x01000000_u32;
+        vbf_inst.vbt_info.blk[0].length = n as u32;
         vbf_inst.vbt_info.blk[0]
             .hash_value
             .clone_from_slice(hash.as_slice());
+        vbf_inst.vbt_info.vbt_format = 0_u16;
+        vbf_inst.vbt_info.num_blk = 1_u16;
 
         // try to create new vbf files
         let target_file_path = vbf_inst.script.target_file.value.literal().unwrap();
@@ -156,8 +168,7 @@ impl VbfFt {
     // dump data to vbf files
     pub fn dump(&mut self, fp: &mut fs::File) -> io::Result<()> {
         // vbf_version =
-        // let start_address = 0x01000000 as u32;
-        // let app_size = 0_u32;
+        let mut checksum_pos = 0_u64;
         fp.write_fmt(format_args!(
             "vbf_version = {};\r\n",
             self.script.vbf_version.value.literal().unwrap()
@@ -227,15 +238,46 @@ impl VbfFt {
         .unwrap();
         fp.write(b"\r\n").unwrap();
 
-        // vbt info
+        // Erase information
         let vbt_enable = self.script.create_vbt.value.toggle().unwrap();
+        fp.write(b"    // Erase information\r\n").unwrap();
+        fp.write(b"    //         start,     length\r\n").unwrap();
+        fp.write_fmt(format_args!(
+            "       erase = {{ {{ 0x{:08X}, 0x{:08x} }},\r\n",
+            self.vbt_info.blk[0].start_addr, self.vbt_info.blk[0].length
+        ))
+        .unwrap();
+        if vbt_enable {
+            fp.write_fmt(format_args!(
+                "                 {{ 0x{:08x}, 0x{:08x} }}\r\n",
+                self.script
+                    .vbt_addr
+                    .value
+                    .literal()
+                    .unwrap()
+                    .parse::<u32>()
+                    .unwrap(),
+                self.vbt_info.vbt_len
+            ))
+            .unwrap();
+        }
+        fp.write(b"               };\r\n").unwrap();
+        fp.write(b"\r\n").unwrap();
+
+        // vbt info
         if vbt_enable {
             self.vbt_info.num_blk += 1_u16;
             fp.write(b"    // Start address of the hash table\r\n")
                 .unwrap();
             fp.write_fmt(format_args!(
                 "       verification_block_start = 0x{:08X};\r\n",
-                self.script.vbt_addr.value.literal().unwrap().parse::<u32>().unwrap()
+                self.script
+                    .vbt_addr
+                    .value
+                    .literal()
+                    .unwrap()
+                    .parse::<u32>()
+                    .unwrap()
             ))
             .unwrap();
             fp.write(b"\r\n").unwrap();
@@ -283,7 +325,6 @@ impl VbfFt {
             fp.write(b"    // Root hash value\r\n").unwrap();
             fp.write(b"       verification_block_root_hash = 0x")
                 .unwrap();
-            // fp.write(&self.vbt_info.vbt_hash[..]).unwrap();
             for b in self.vbt_info.vbt_hash {
                 fp.write_fmt(format_args!("{:02X}", b)).unwrap();
             }
@@ -312,7 +353,12 @@ impl VbfFt {
         let crc16_inst = Crc::<u16>::new(&CRC_16_IBM_3740);
         let mut bin_crc32 = crc32_inst.digest();
         let mut bin_crc16 = crc16_inst.digest();
-        
+
+        let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
+        bin_crc32.update(&bytes);
+        let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
+        bin_crc32.update(&bytes);
+
         let mut bin_size: u32 = 0;
         let mut f_bin = fs::File::open(self.script.source_file.value.literal().unwrap()).unwrap();
         let crc_v = loop {
@@ -322,11 +368,16 @@ impl VbfFt {
             bin_crc16.update(&buffer[..n]);
             bin_size += n as u32;
             if n < 4096 {
-                break (bin_crc32.finalize(), bin_crc16.finalize());
+                let temp_16 = bin_crc16.finalize();
+                let bytes: [u8; 2] = unsafe { transmute(temp_16.to_be()) };
+                bin_crc32.update(&bytes);
+                break (0_u32, temp_16);
             }
         };
         println!("elapsed time: {:?}", now.elapsed());
         // file_checksum
+        checksum_pos = fp.stream_position().unwrap();
+        // println!("current position:{:?}",fp.stream_position());
         fp.write_fmt(format_args!("    file_checksum = 0x{:08X};\r\n", crc_v.0))
             .unwrap();
         fp.write_all(b"}").unwrap();
@@ -374,44 +425,55 @@ impl VbfFt {
                         .to_be(),
                 )
             };
+            bin_crc32.update(&vbt_address);
             fp.write(&vbt_address).unwrap();
             let vbt_length: [u8; 4] = unsafe { transmute(self.vbt_info.vbt_len.to_be()) };
+            bin_crc32.update(&vbt_length);
             fp.write(&vbt_length).unwrap();
 
             let crc16_inst = Crc::<u16>::new(&CRC_16_IBM_3740);
             let mut crc16_vbt = crc16_inst.digest();
             let vbt_format: [u8; 2] = unsafe { transmute(self.vbt_info.vbt_format.to_be()) };
             crc16_vbt.update(&vbt_format);
+            bin_crc32.update(&vbt_format);
             fp.write(&vbt_format).unwrap();
 
-            let num_blk: [u8; 2] = unsafe { transmute((self.vbt_info.num_blk -1).to_be()) };
+            let num_blk: [u8; 2] = unsafe { transmute((self.vbt_info.num_blk - 1).to_be()) };
+            bin_crc32.update(&num_blk);
             crc16_vbt.update(&num_blk);
             fp.write(&num_blk).unwrap();
 
-            let bytes: [u8; 4] = unsafe { transmute(self.image_start_addr.to_be()) };
+            let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
+            bin_crc32.update(&bytes);
             crc16_vbt.update(&bytes);
             fp.write_all(&bytes).unwrap();
-            let bytes: [u8; 4] = unsafe { transmute(self.file_bytes.to_be()) };
+            let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
+            bin_crc32.update(&bytes);
             crc16_vbt.update(&bytes);
             fp.write_all(&bytes).unwrap();
 
             crc16_vbt.update(&self.vbt_info.blk[0].hash_value);
+            bin_crc32.update(&self.vbt_info.blk[0].hash_value);
+
             let vbt_check: [u8; 2] = unsafe { transmute(crc16_vbt.finalize().to_be()) };
 
             fp.write(&self.vbt_info.blk[0].hash_value).unwrap();
 
+            bin_crc32.update(&vbt_check);
             fp.write(&vbt_check).unwrap();
         }
+        fp.seek(SeekFrom::Start(checksum_pos)).unwrap();
+        fp.write_fmt(format_args!(
+            "    file_checksum = 0x{:08X};\r\n",
+            bin_crc32.finalize()
+        ))
+        .unwrap();
         #[cfg(debug_assertions)]
         {
-            println!("write consumed time:{:?}", now.elapsed());
-            println!("write_cnt: {}", write_cnt);
-            println!("crc16:0x{:04X}", crc_v.1);
-            println!("crc32:0x{:08X}", crc_v.0);
             println!("bin_size:0x{:0X}", bin_size);
         }
         #[cfg(not(debug_assertions))]
-        println!("test release");
+        println!("good luck!!!");
         Ok(())
     }
 }
@@ -422,18 +484,19 @@ enum StatusT {
 }
 #[derive(Debug)]
 struct ScriptsT {
-    source_file: Item, //input bin file
-    target_file: Item, //output vbf file
-    vbf_version: Item, //vbf format version
-    sw_type: Item,     //software type,
-    sw_part_nmu: Item, //software partnumber
-    ecu_addr: Item,    //ecu address
-    sw_version: Item,  //software version
-    create_vbt: Item,  //if create verification block table
-    vbt_addr: Item,    //address of vbt
-    compressed: Item,  //if compress input bin file
-    sort: Item,        //tbd
-    group: Item,       //tbd
+    source_file: Item,  //input bin file
+    target_file: Item,  //output vbf file
+    vbf_version: Item,  //vbf format version
+    sw_type: Item,      //software type,
+    sw_part_nmu: Item,  //software partnumber
+    ecu_addr: Item,     //ecu address
+    sw_version: Item,   //software version
+    image_offset: Item, //image offset
+    create_vbt: Item,   //if create verification block table
+    vbt_addr: Item,     //address of vbt
+    compressed: Item,   //if compress input bin file
+    sort: Item,         //tbd
+    group: Item,        //tbd
 }
 #[derive(Debug)]
 struct Item {
@@ -460,7 +523,7 @@ impl ValueT {
     }
 }
 
-struct blk_info {
+struct BlkInfo {
     start_addr: u32,
     length: u32,
     hash_value: [u8; 32],
@@ -470,5 +533,5 @@ struct VbtInfo {
     vbt_hash: [u8; 32],
     vbt_format: u16,
     num_blk: u16,
-    blk: [blk_info; 2],
+    blk: [BlkInfo; 2],
 }

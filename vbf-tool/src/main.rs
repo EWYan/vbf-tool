@@ -10,15 +10,17 @@ fn run() -> io::Result<()> {
     /* get parameters from input */
     let matches = App::new(crate_name!())
         .version(crate_version!())
+        .author("juziyan <erwei.yan@autofreetech.com>")
         .arg(
             Arg::with_name("VBB")
                 .takes_value(true)
                 .value_name("VBB")
-                .help("VBB scripts should be append"),
+                .required(true)
+                .help("vbb scripts should be append"),
         )
         .get_matches();
 
-    let vbb_path = matches.value_of("VBB").unwrap();
+    let vbb_path = matches.value_of("VBB").expect("invalid vbb path");
     let result = vbf_parser::VbfFt::new(vbb_path);
     if let Err(err) = result {
         eprintln!("Error: {}", err);
@@ -31,7 +33,7 @@ fn main() {
     let now = Instant::now();
     let result = run();
     let elapsed_time = now.elapsed();
-    println!("running time:{:?}", elapsed_time);
+    println!("Elapsed time:{:?}", elapsed_time);
     match result {
         Err(err) => {
             eprintln!("Error: {}", err);
@@ -40,4 +42,3 @@ fn main() {
         Ok(()) => {}
     }
 }
-// C:\d_vault\git_trace\hexyl-y\hexyl-y\target\debug\hexyl-y.exe
