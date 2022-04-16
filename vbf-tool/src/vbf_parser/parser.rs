@@ -2,7 +2,7 @@ extern crate json;
 extern crate sha2;
 
 use sha2::{Digest, Sha256};
-use std::io::prelude::*;
+use std::io::{prelude::*, SeekFrom};
 use std::{fs, io};
 //CRC_16_IBM_3740 -> CCITT,AUTOSAR
 use crc::{Algorithm, Crc, CRC_16_IBM_3740};
@@ -163,6 +163,7 @@ impl VbfFt {
     // dump data to vbf files
     pub fn dump(&mut self, fp: &mut fs::File) -> io::Result<()> {
         // vbf_version =
+        let mut checksum_pos = 0_u64;
         fp.write_fmt(format_args!(
             "vbf_version = {};\r\n",
             self.script.vbf_version.value.literal().unwrap()
@@ -347,6 +348,11 @@ impl VbfFt {
         let mut bin_crc32 = crc32_inst.digest();
         let mut bin_crc16 = crc16_inst.digest();
 
+        let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
+        bin_crc32.update(&bytes);
+        let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
+        bin_crc32.update(&bytes);
+
         let mut bin_size: u32 = 0;
         let mut f_bin = fs::File::open(self.script.source_file.value.literal().unwrap()).unwrap();
         let crc_v = loop {
@@ -356,10 +362,15 @@ impl VbfFt {
             bin_crc16.update(&buffer[..n]);
             bin_size += n as u32;
             if n < 4096 {
-                break (bin_crc32.finalize(), bin_crc16.finalize());
+                let temp_16 = bin_crc16.finalize();
+                let bytes: [u8; 2] = unsafe { transmute(temp_16.to_be()) };
+                bin_crc32.update(&bytes);
+                break (0_u32, temp_16);
             }
         };
         // file_checksum
+        checksum_pos = fp.stream_position().unwrap();
+        // println!("current position:{:?}",fp.stream_position());
         fp.write_fmt(format_args!("    file_checksum = 0x{:08X};\r\n", crc_v.0))
             .unwrap();
         fp.write_all(b"}").unwrap();
@@ -405,43 +416,55 @@ impl VbfFt {
                         .to_be(),
                 )
             };
+            bin_crc32.update(&vbt_address);
             fp.write(&vbt_address).unwrap();
             let vbt_length: [u8; 4] = unsafe { transmute(self.vbt_info.vbt_len.to_be()) };
+            bin_crc32.update(&vbt_length);
             fp.write(&vbt_length).unwrap();
 
             let crc16_inst = Crc::<u16>::new(&CRC_16_IBM_3740);
             let mut crc16_vbt = crc16_inst.digest();
             let vbt_format: [u8; 2] = unsafe { transmute(self.vbt_info.vbt_format.to_be()) };
             crc16_vbt.update(&vbt_format);
+            bin_crc32.update(&vbt_format);
             fp.write(&vbt_format).unwrap();
 
             let num_blk: [u8; 2] = unsafe { transmute((self.vbt_info.num_blk - 1).to_be()) };
+            bin_crc32.update(&num_blk);
             crc16_vbt.update(&num_blk);
             fp.write(&num_blk).unwrap();
 
             let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].start_addr.to_be()) };
+            bin_crc32.update(&bytes);
             crc16_vbt.update(&bytes);
             fp.write_all(&bytes).unwrap();
             let bytes: [u8; 4] = unsafe { transmute(self.vbt_info.blk[0].length.to_be()) };
+            bin_crc32.update(&bytes);
             crc16_vbt.update(&bytes);
             fp.write_all(&bytes).unwrap();
 
             crc16_vbt.update(&self.vbt_info.blk[0].hash_value);
+            bin_crc32.update(&self.vbt_info.blk[0].hash_value);
+
             let vbt_check: [u8; 2] = unsafe { transmute(crc16_vbt.finalize().to_be()) };
 
             fp.write(&self.vbt_info.blk[0].hash_value).unwrap();
 
+            bin_crc32.update(&vbt_check);
             fp.write(&vbt_check).unwrap();
         }
+        fp.seek(SeekFrom::Start(checksum_pos)).unwrap();
+        fp.write_fmt(format_args!(
+            "    file_checksum = 0x{:08X};\r\n",
+            bin_crc32.finalize()
+        ))
+        .unwrap();
         #[cfg(debug_assertions)]
         {
-            println!("write_cnt: {}", write_cnt);
-            println!("crc16:0x{:04X}", crc_v.1);
-            println!("crc32:0x{:08X}", crc_v.0);
             println!("bin_size:0x{:0X}", bin_size);
         }
         #[cfg(not(debug_assertions))]
-        println!("beta 1.0");
+        println!("good luck!!!");
         Ok(())
     }
 }
