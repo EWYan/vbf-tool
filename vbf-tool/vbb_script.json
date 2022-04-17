@@ -1,16 +1,16 @@
 {
     "VBF1":
     {
-        "SourceFile": "./MCU_APP_MUS00_M.bin",
+        "SourceFile": "./sample_bin.bin",
         "TargetFile": "./sample_bin.vbf",
         "VBFVersion": "2.6",
         "SwType": "EXE",
         "SwPartNum": "8894082291",
         "ECUaddr": "1432",
         "SwVersion": "A",
-        "ImageOffset": "16777216",
+        "ImageOffset": "1000000",
         "CreateVerificationBlock": true,
-        "VerificationBlockStartAddr": "4294960640",
+        "VerificationBlockStartAddr": "FFFFFE00",
         "Compressed": false,
         "Sort": true,
         "Group": true
