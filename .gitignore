@@ -2,3 +2,4 @@
 
 /vbf-tool/vbf-tools/*
 *.vbf
+.vscode/settings.json
