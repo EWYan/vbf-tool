@@ -1,6 +1,7 @@
 {
     "VBF1":
     {
+        "Description": "attention : not show in VBF files !!! user defined file info about file",
         "SourceFile": "./sample_bin.bin",
         "TargetFile": "./sample_bin.vbf",
         "VBFVersion": "2.6",

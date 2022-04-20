@@ -79,6 +79,11 @@ header {
 
 the description of vbf file parameters.
 
+## build
+cargo b --release
 
 ## usage example
 $ vbf-tool ./vbb_script.json
+
+## v 0.1.2
+- fix address typo
